@@ -72,7 +72,18 @@ def check(add, mult, exp):
                 if exp[exp[i][j]][k] != exp[i][mult[j][k]]:
                     return False
 
-    return True
+    # Fail wilkie's for 0, 4.
+    x = 0
+    y = 4
+    P = add[1][x]
+    Q = add[1][add[x][mult[x][x]]]
+    R = add[1][mult[x][mult[x][x]]]
+    S = add[1][add[mult[x][x]][mult[x][mult[x][mult[x][x]]]]]
+    L1 = add[exp[P][x]][exp[Q][x]]
+    L2 = add[exp[R][y]][exp[S][y]]
+    R1 = add[exp[P][y]][exp[Q][y]]
+    R2 = add[exp[R][x]][exp[S][x]]
+    return mult[exp[L1][y]][exp[L2][x]] != mult[exp[R1][x]][exp[R2][y]]
 
 def process_table(table_lines):
     n = len(table_lines)

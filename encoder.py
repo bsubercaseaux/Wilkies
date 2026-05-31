@@ -5,34 +5,30 @@ import lex
 from pysat.formula import CNF, IDPool
 from pysat.solvers import Solver
 
-
+# create variables once for encoding/decoding
 def operation_accessors(n, idpool):
     add = lambda i, j, k: idpool.id(f"add_{i}_{j}_{k}")
     mul = lambda i, j, k: idpool.id(f"mul_{i}_{j}_{k}")
     exp = lambda i, j, k: idpool.id(f"exp_{i}_{j}_{k}")
 
-    symmetric_combs = []
+    symmetric_combs = [] # (i, j) with i <= j
     for i in range(n):
-        for j in range(i, n):
-            symmetric_combs.append((i, j))
+        symmetric_combs.extend([(i, j) for j in range(i, n)])
 
+    # access add then mul then exp, to force variable ordering
     for i, j in symmetric_combs:
         for k in range(n):
             add(i, j, k)
-
-    print(f"top var = {idpool.top}")
-
     for i, j in symmetric_combs:
         for k in range(n):
             mul(i, j, k)
+    for i, j in itertools.product(range(n), repeat=2):
+        for k in range(n):
+            exp(i, j, k)
 
     # commutativity of addition and multiplication is encoded by considering unordered pairs
     add_ = lambda i, j, k: add(min(i, j), max(i, j), k)
     mul_ = lambda i, j, k: mul(min(i, j), max(i, j), k)
-
-    for i, j in itertools.product(range(n), repeat=2):
-        for k in range(n):
-            exp(i, j, k)
 
     return add_, mul_, exp, symmetric_combs
 
@@ -42,18 +38,14 @@ def encode(n, return_idpool=False):
     idpool = IDPool()
     add_, mul_, exp, symmetric_combs = operation_accessors(n, idpool)
 
-    for i, j in symmetric_combs:
-        cnf.extend(amo_encoder.exactly_one_pairwise([add_(i, j, k) for k in range(n)]))
 
-    # print(f"top var = {idpool.top}")
-    
+    for i, j in symmetric_combs: # tried recursive but it was worse than pairwise
+        cnf.extend(amo_encoder.exactly_one_pairwise([add_(i, j, k) for k in range(n)]))
     for i, j in symmetric_combs:
         cnf.extend(amo_encoder.exactly_one_pairwise([mul_(i, j, k) for k in range(n)]))
-
     for i, j in itertools.product(range(n), repeat=2):
         cnf.extend(amo_encoder.exactly_one_pairwise([exp(i, j, k) for k in range(n)]))
 
-    # print(f"top var = {idpool.top}")
 
     # x * 1 = x
     for x in range(n):
@@ -130,6 +122,7 @@ def encode(n, return_idpool=False):
             cnf.append([-mul_(y, z, m), -exp(x, m, l), exp_2(x, y, z, l)])
 
     # Wilkie's disequality at (a,b) = (0,4), in Zhang's formulation
+    # the idea is to construct the parse tree of the expression
     c = lambda l: idpool.id(f"wilkie_c_{l}")
     P = lambda l: idpool.id(f"wilkie_P_{l}")
     Q = lambda l: idpool.id(f"wilkie_Q_{l}")
@@ -246,14 +239,14 @@ def encode(n, return_idpool=False):
         for left, right in itertools.combinations(labels, 2):
             add_table_lex_leader(left, right)
 
-        # adjacent transpositions
+        # adjacent transpositions (in some cases just enforcing this was more efficient)
         # for i in range(len(labels)-1):
         #     add_table_lex_leader(labels[i], labels[i+1])
 
     add_table_transposition_lex_leaders()
 
-    cnf.append([add_(1, 1, 2)])
-    cnf.append([add_(2, 1, 3)])
+    cnf.append([add_(1, 1, 2)]) # Zhang's
+    cnf.append([add_(2, 1, 3)]) # Zhang's
     cnf.append([-add_(1, 0, 1)]) # 1 + a != 1
     cnf.append([-add_(2, 0, 1)]) # 2 + a != 1
     cnf.append([-add_(0, 0, 1)]) # a + a != 1
@@ -294,7 +287,7 @@ def print_table(name, table):
     print()
 
 
-def decode(n, model):
+def decode(n, model, add_only=False):
     idpool = IDPool()
     add_, mul_, exp, _ = operation_accessors(n, idpool)
     model = set(lit for lit in model if lit > 0)
@@ -306,6 +299,10 @@ def decode(n, model):
         return "?"
 
     add_table = [[value(lambda k, i=i, j=j: add_(i, j, k)) for j in range(n)] for i in range(n)]
+    if add_only:
+        print_table("addition", add_table)
+        return
+        
     mul_table = [[value(lambda k, i=i, j=j: mul_(i, j, k)) for j in range(n)] for i in range(n)]
     exp_table = [[value(lambda k, i=i, j=j: exp(i, j, k)) for j in range(n)] for i in range(n)]
 
@@ -330,9 +327,25 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
     argparser.add_argument("-n", "--n", type=int, default=5)
     argparser.add_argument("--decode", action="store_true", help="solve with PySAT and print operation tables")
+
+    argparser.add_argument("--decode-file", type=str, default=None)
+    argparser.add_argument("--decode-add-only", action="store_true", help="decode only addition table")
+
     args = argparser.parse_args()
 
     cnf = encode(args.n)
+    if args.decode_file:
+        models = []
+        with open(args.decode_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("v "):
+                    models.append([int(lit) for lit in line.split("v ")[1].split()])
+        print(f"Found {len(models)} models")
+        for model in models:
+            decode(args.n, model, add_only=args.decode_add_only)
+        exit(0) 
+
     filename = f"wilkies_{args.n}.cnf"
     cnf.to_file(filename)
     print(f"Serialized to {filename}")
