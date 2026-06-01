@@ -1,5 +1,6 @@
 import argparse
 import itertools
+from pathlib import Path
 import amo_encoder
 import lex
 from pysat.formula import CNF, IDPool
@@ -310,7 +311,6 @@ def decode(n, model, add_only=False):
     print_table("multiplication", mul_table)
     print_table("exponentiation", exp_table)
 
-
 def solve_and_decode(n, cnf):
     solver = Solver(name="Cadical195", bootstrap_with=cnf.clauses)
     try:
@@ -322,6 +322,70 @@ def solve_and_decode(n, cnf):
     finally:
         solver.delete()
 
+def gen_instances_from_addition_models(n, models, model_indices=None, output_dir="formulas/post-add"):
+    num_models_per_addition = {}
+    if model_indices is None:
+        model_indices = range(len(models))
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for model_index in model_indices:
+        if model_index < 0 or model_index >= len(models):
+            raise IndexError(f"model index {model_index} is outside 0..{len(models) - 1}")
+        model = models[model_index]
+        cnf = encode(n)
+        for lit in model:
+            # DIMACS model lines use 0 as a terminator, not as a literal.
+            if lit == 0:
+                continue
+            cnf.append([lit])
+        # solver = Solver(name="Cadical195", bootstrap_with=cnf.clauses)
+        # num_models = 0
+        # for model in solver.enum_models():
+        #     num_models += 1
+        #     print(f"Found model #{num_models} for addition # {model_index}")
+            
+        # num_models_per_addition[model_index] = num_models
+        cnf_filename = output_dir / f"wilkies_{n}_{model_index}.cnf"
+        cnf.to_file(str(cnf_filename))
+        print(f"Serialized to {cnf_filename}")
+        
+def process_models(filename):
+    models = []
+    current_model = []
+    with open(filename, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line.startswith("v "):
+                continue
+            for lit in (int(token) for token in line.split()[1:]):
+                if lit == 0:
+                    models.append(current_model)
+                    current_model = []
+                else:
+                    current_model.append(lit)
+    if current_model:
+        models.append(current_model)
+    print(f"Found {len(models)} models")
+    return models
+
+def selected_model_indices(model_count, index=None, start=None, stop=None):
+    if index is not None:
+        if start is not None or stop is not None:
+            raise ValueError("--post-addition-index cannot be combined with range options")
+        indices = [index]
+    else:
+        start = 0 if start is None else start
+        stop = model_count if stop is None else stop
+        if start < 0 or stop < start or stop > model_count:
+            raise ValueError(f"model range {start}..{stop} is outside 0..{model_count}")
+        indices = range(start, stop)
+
+    for model_index in indices:
+        if model_index < 0 or model_index >= model_count:
+            raise ValueError(f"model index {model_index} is outside 0..{model_count - 1}")
+    return indices
+
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
@@ -330,22 +394,36 @@ if __name__ == "__main__":
 
     argparser.add_argument("--decode-file", type=str, default=None)
     argparser.add_argument("--decode-add-only", action="store_true", help="decode only addition table")
+    argparser.add_argument("--gen-post-addition", type=str, default=None)
+    argparser.add_argument("--post-addition-index", type=int, default=None, help="generate only this addition-model index")
+    argparser.add_argument("--post-addition-start", type=int, default=None, help="first addition-model index to generate")
+    argparser.add_argument("--post-addition-stop", type=int, default=None, help="exclusive end addition-model index to generate")
+    argparser.add_argument("--post-addition-output-dir", type=str, default="formulas/post-add", help="directory for post-addition CNFs")
 
     args = argparser.parse_args()
 
-    cnf = encode(args.n)
     if args.decode_file:
-        models = []
-        with open(args.decode_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("v "):
-                    models.append([int(lit) for lit in line.split("v ")[1].split()])
-        print(f"Found {len(models)} models")
+        models = process_models(args.decode_file)
         for model in models:
             decode(args.n, model, add_only=args.decode_add_only)
-        exit(0) 
+        exit(0)
+    if args.gen_post_addition:
+        models = process_models(args.gen_post_addition)
+        model_indices = selected_model_indices(
+            len(models),
+            index=args.post_addition_index,
+            start=args.post_addition_start,
+            stop=args.post_addition_stop,
+        )
+        gen_instances_from_addition_models(
+            args.n,
+            models,
+            model_indices=model_indices,
+            output_dir=args.post_addition_output_dir,
+        )
+        exit(0)
 
+    cnf = encode(args.n)
     filename = f"wilkies_{args.n}.cnf"
     cnf.to_file(filename)
     print(f"Serialized to {filename}")
