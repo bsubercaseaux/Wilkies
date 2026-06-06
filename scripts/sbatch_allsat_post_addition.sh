@@ -13,7 +13,7 @@ if [[ -z "${SLURM_ARRAY_TASK_ID:-}" ]]; then
   exit 2
 fi
 
-REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+REPO_DIR="${REPO_DIR:-${SLURM_SUBMIT_DIR:-$(pwd)}}"
 N="${N:-12}"
 CNF_DIR="${CNF_DIR:-formulas/post-add}"
 RESULT_DIR="${RESULT_DIR:-results/post-add}"
