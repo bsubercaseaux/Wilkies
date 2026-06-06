@@ -257,6 +257,9 @@ def encode(n, return_idpool=False):
     cnf.append([-add_(1, 0, 0)]) # 1 + a != a
     cnf.append([-add_(2, 0, 0)]) # 2 + a != a
 
+
+    cnf.append([exp(2, 0, 4)])
+
     # Lee
     for x in range(n):
         cnf.append([-mul_(0, x, 4)])

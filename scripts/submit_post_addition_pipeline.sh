@@ -59,6 +59,15 @@ fi
 
 export REPO_DIR N MODELS OUT_DIR RESULT_DIR DATAVARS PYTHON ALLSAT ALLSAT_EXTRA_ARGS
 
+if [[ "${DRY_RUN:-0}" == "1" ]]; then
+  echo "Found ${num_models} models in ${MODELS}."
+  echo "Would submit generation array:"
+  echo "  sbatch --parsable --array=${gen_array} scripts/sbatch_gen_post_addition.sh"
+  echo "Would submit allsat array after generation succeeds:"
+  echo "  sbatch --parsable --dependency=afterok:<gen_job> --array=${allsat_array} scripts/sbatch_allsat_post_addition.sh"
+  exit 0
+fi
+
 gen_job="$(
   sbatch \
     --parsable \

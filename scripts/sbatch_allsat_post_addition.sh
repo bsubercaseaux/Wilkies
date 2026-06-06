@@ -34,13 +34,15 @@ if [[ ! -s "$cnf" ]]; then
   exit 3
 fi
 
-extra_args=()
+allsat_cmd=("$ALLSAT" "$cnf" --allsat "--datavars=${DATAVARS}")
 if [[ -n "$ALLSAT_EXTRA_ARGS" ]]; then
+  extra_args=()
   read -r -a extra_args <<< "$ALLSAT_EXTRA_ARGS"
+  allsat_cmd+=("${extra_args[@]}")
 fi
 
 echo "Running allsat on $cnf with datavars=${DATAVARS}"
-"$ALLSAT" "$cnf" --allsat "--datavars=${DATAVARS}" "${extra_args[@]}" \
+"${allsat_cmd[@]}" \
   > "$stdout_file" \
   2> "$stderr_file"
 
